@@ -159,6 +159,12 @@ async function homeMais(){
  ${[['empresa','Designação','IETA, SA'],['morada','Morada',''],['tecnico','Técnico responsável',''],['contacto','Contacto','HST & Ambiente']].map(([k,l,d])=>`<label>${l}</label><input data-set="${k}" value="${esc(LS.get(k,d))}">`).join('')}</div>
  <div class="card"><h3>Logo da empresa</h3><p class="mut">Aparece na app e no cabeçalho do relatório Word.</p>${SET.logo?`<img src="${SET.logo.data}" style="max-height:60px;display:block;margin-bottom:10px;background:#fff;padding:4px;border-radius:6px">`:''}
  <div class="row"><label class="btn sec" style="margin:0;text-align:center;color:var(--ink)">Escolher imagem<input type="file" accept="image/*" data-logo hidden></label>${SET.logo?'<button class="btn sec" data-act="logoclr">Remover</button>':''}</div></div>
+ <div class="card"><h3>Envio por email</h3><p class="mut">O botão “Enviar por email” abre o Outlook ou Gmail com os ficheiros em anexo. O Android não deixa preencher o destinatário, por isso o endereço abaixo é copiado para colares em “Para”.</p>
+ <label>O meu email (destino)</label><input data-set="mail_to" type="email" value="${esc(LS.get('mail_to'))}">
+ <label>Assunto</label><input data-set="mail_subj" value="${esc(LS.get('mail_subj',MAIL_SUBJ))}">
+ <label>Texto da mensagem</label><textarea data-set="mail_body" style="min-height:190px">${esc(LS.get('mail_body',MAIL_BODY))}</textarea>
+ <p class="mut" style="font-size:12px">Campos que podes usar: {equipamento} {nint} {local} {data} {tecnico} {modulo} {conclusao} {nc} {lista}</p>
+ <button class="btn sec sm" data-act="mailreset">Repor texto original</button></div>
  <div class="card"><h3>Aparência</h3><label>Tema</label><select data-set="tema"><option value="auto" ${LS.get('tema','auto')==='auto'?'selected':''}>Automático (claro/escuro do telemóvel)</option><option value="hc" ${LS.get('tema')==='hc'?'selected':''}>Alto contraste (para usar ao sol)</option></select></div>
  <div class="card"><h3>Exportar e copiar</h3><button class="btn sec" data-act="hist" style="margin-bottom:10px">Exportar histórico (Excel acumulado)</button>
  <button class="btn sec" data-act="bkexp" style="margin-bottom:10px">Cópia de segurança (ficheiro)</button>
@@ -346,9 +352,18 @@ function initSig(){
  cv.onpointerup=cv.onpointercancel=()=>{if(!d)return;d=false;cur.sig=cv.toDataURL('image/png');save()};
  $('#sigclr').onclick=()=>{c.clearRect(0,0,r.width,r.height);cur.sig='';save()};
 }
+const MAIL_SUBJ='Inspeção DL 50/2005 — {equipamento} ({nint}) — {data}';
+const MAIL_BODY='Olá,\n\nSegue em anexo o relatório da inspeção de segurança de equipamentos de trabalho (DL 50/2005).\n\nEquipamento: {equipamento} ({nint})\nLocal: {local}\nData: {data}\nTécnico: {tecnico}\nResultado: {conclusao}\nNão conformidades: {nc}{lista}\n\nCumprimentos,\n{tecnico}';
+function mailVars(i){
+ const its=allItems(i),ncs=its.filter(it=>(i.ans[it.id]||{}).r==='NC'),h=i.head;
+ return{equipamento:h.equip||'',nint:h.nint||'',local:h.local||'',data:fmtD(h.data),tecnico:h.tecnico||'',modulo:modName(i),
+  conclusao:i.concl==='CUMPRE'?'CUMPRE os requisitos mínimos':i.concl==='NAO'?'NÃO CUMPRE os requisitos mínimos':'(por concluir)',
+  nc:String(ncs.length),lista:ncs.length?'\n'+ncs.map(it=>`  - ${it.id} ${it.text.split(' — ')[0]}`).join('\n'):''};
+}
+const fillTpl=(t,v)=>t.replace(/\{(\w+)\}/g,(m,k)=>k in v?v[k]:m).replace(/\(\)/g,'').replace(/ — \s*—/g,' —');
 function showOuts(){
  const el=$('#xlout');if(!el)return;
- el.innerHTML=Object.entries(outs).map(([k,o])=>`<div class="outrow"><div>✔ <b>${esc(o.name)}</b> <small>(${(o.blob.size/1048576).toFixed(1)} MB)</small></div><div class="row"><button class="btn sm" data-act="share" data-k="${k}">Partilhar</button><button class="btn sec sm" data-act="dl" data-k="${k}">Descarregar</button></div></div>`).join('');
+ el.innerHTML=Object.entries(outs).map(([k,o])=>`<div class="outrow"><div>✔ <b>${esc(o.name)}</b> <small>(${(o.blob.size/1048576).toFixed(1)} MB)</small></div><div class="row"><button class="btn sm" data-act="share" data-k="${k}">Partilhar</button><button class="btn sec sm" data-act="dl" data-k="${k}">Descarregar</button></div></div>`).join('')+(Object.keys(outs).length?`<div class="outrow"><button class="btn" data-act="mail">✉ Enviar por email${Object.keys(outs).length>1?' (Word + Excel)':''}</button><small class="mut">${LS.get('mail_to')?'O teu email é copiado — cola em “Para”.':'Define o teu email em Definições para ser copiado automaticamente.'}</small></div>`:'');
 }
 const fbase=()=>{const h=cur.head;return('Inspecao_'+[h.equip,h.nint,h.data].filter(Boolean).join('_')).replace(/[^\w\-]+/g,'_').replace(/_+/g,'_')};
 function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000)}
@@ -389,6 +404,13 @@ app.addEventListener('click',async e=>{
  else if(act==='share'){const o=outs[t.dataset.k];const f=new File([o.blob],o.name,{type:o.blob.type});
   if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:o.name})}catch(err){if(err.name!=='AbortError')download(o.blob,o.name)}}else download(o.blob,o.name)}
  else if(act==='dl'){const o=outs[t.dataset.k];download(o.blob,o.name)}
+ else if(act==='mailreset'){LS.set('mail_subj',MAIL_SUBJ);LS.set('mail_body',MAIL_BODY);homeMais();toast('Texto reposto')}
+ else if(act==='mail'){
+  const v=mailVars(cur),subj=fillTpl(LS.get('mail_subj',MAIL_SUBJ),v),body=fillTpl(LS.get('mail_body',MAIL_BODY),v),to=LS.get('mail_to');
+  const files=Object.values(outs).map(o=>new File([o.blob],o.name,{type:o.blob.type}));
+  if(to){try{await navigator.clipboard.writeText(to);toast('Email copiado: cola em “Para”')}catch(e){}}
+  if(navigator.canShare&&navigator.canShare({files})){try{await navigator.share({files,title:subj,text:body})}catch(err){if(err.name!=='AbortError')toast('Não consegui abrir a partilha')}}
+  else{Object.values(outs).forEach(o=>download(o.blob,o.name));location.href='mailto:'+encodeURIComponent(to||'')+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body);toast('Anexa os ficheiros descarregados ao email')}}
  else if(act==='hist'){t.disabled=true;try{download(await buildHistory(),`Historico_Inspecoes_${today()}.xlsx`)}finally{t.disabled=false}}
  else if(act==='logoclr'){await del('settings','logo');SET.logo=null;paintLogo();homeMais()}
  else if(act==='bkexp'){t.disabled=true;try{await exportBackup()}finally{t.disabled=false}}
