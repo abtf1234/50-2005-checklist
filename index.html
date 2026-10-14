@@ -10,11 +10,19 @@
 <title>Inspeções DL 50/2005</title>
 </head>
 <body>
-<header id="top"><button id="back" hidden aria-label="Voltar">‹</button><h1 id="title">Inspeções DL 50/2005</h1><span id="sub"></span></header>
+<header id="top"><button id="back" hidden aria-label="Voltar">‹</button><img id="logo" alt="" hidden><h1 id="title">Inspeções</h1><span id="net" hidden>● sem rede</span><span id="sub"></span></header>
 <main id="app"></main>
+<nav id="nav" hidden>
+ <button data-t="insp"><span>📋</span>Inspeções</button>
+ <button data-t="maq"><span>🏭</span>Máquinas</button>
+ <button data-t="acoes"><span>✅</span>Ações</button>
+ <button data-t="mais"><span>⚙️</span>Definições</button>
+</nav>
 <div id="toast" role="status"></div>
 <script src="data.js"></script>
 <script src="exceljs.min.js"></script>
+<script src="docx.umd.js"></script>
+<script src="qrcode.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
