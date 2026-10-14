@@ -431,7 +431,12 @@ async function exportBackup(){
 }
 async function importBackup(file){
  let d;try{d=JSON.parse(await file.text())}catch(e){toast('Ficheiro inválido');return}
- if(d.app!=='ieta-insp'){toast('Este ficheiro não é uma cópia desta app');return}
+ if(d.app!=='ieta-insp'||!Array.isArray(d.insp)||!Array.isArray(d.machines)||!Array.isArray(d.photos)){toast('Este ficheiro não é uma cópia desta app');return}
+ const okId=x=>typeof x==='string'&&/^[a-z0-9]{3,40}$/.test(x),okImg=x=>typeof x==='string'&&/^data:image\/(jpeg|png);base64,/.test(x);
+ d.insp=d.insp.filter(i=>i&&okId(i.id)&&DATA.modules.some(m=>m.id===i.module)&&i.head&&i.ans&&i.nc);
+ d.machines=d.machines.filter(m=>m&&okId(m.id));
+ d.photos=d.photos.filter(p=>p&&okId(p.id)&&okId(p.inspId)&&/^[A-Z]\.\d+$/.test(p.ref)&&okImg(p.blob));
+ if(d.logo&&!okImg(d.logo.data))d.logo=null;
  if(!confirm(`Importar ${d.insp.length} inspeções, ${d.machines.length} máquinas e ${d.photos.length} fotos?\nO que tiver o mesmo identificador é substituído.`))return;
  for(const m of d.machines)await put('machines',m);for(const i of d.insp)await put('insp',i);
  for(const p of d.photos){const b=await(await fetch(p.blob)).blob();await put('photos',{...p,blob:b})}
