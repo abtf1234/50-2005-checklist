@@ -198,11 +198,46 @@ async function saveMachine(){
  if(m._new){mdraft={...o,blocks:[...o.blocks]};INS=[];renderMachine()}else history.back();
 }
 const qrURL=n=>location.origin+location.pathname+'#maq='+encodeURIComponent(n);
-function showQR(){
+let lastLabel=null;
+function wrapLines(c,text,maxW,maxLines){
+ const words=String(text||'').split(/\s+/).filter(Boolean),lines=[];let cur='';
+ for(const w of words){const t=cur?cur+' '+w:w;if(c.measureText(t).width<=maxW||!cur)cur=t;else{lines.push(cur);cur=w}}
+ if(cur)lines.push(cur);
+ if(lines.length>maxLines){lines.length=maxLines;let l=lines[maxLines-1];while(c.measureText(l+'…').width>maxW&&l.length>1)l=l.slice(0,-1);lines[maxLines-1]=l+'…'}
+ return lines;
+}
+async function labelCanvas(m){
+ const mm=11.811,W=Math.round(100*mm),H=Math.round(70*mm),cv=document.createElement('canvas');cv.width=W;cv.height=H;const c=cv.getContext('2d');
+ const NAVY='#16324f',F='Arial, Helvetica, sans-serif';
+ c.fillStyle='#fff';c.fillRect(0,0,W,H);
+ // cabeçalho (0–12 mm)
+ c.fillStyle=NAVY;c.fillRect(0,0,W,12*mm);
+ c.fillStyle='#fff';c.textBaseline='middle';c.textAlign='left';c.font=`bold ${4.2*mm}px ${F}`;c.fillText('INSPEÇÃO DE SEGURANÇA',5*mm,6*mm);
+ c.font=`${3.2*mm}px ${F}`;c.textAlign='right';c.fillText('DL 50/2005',W-5*mm,6*mm);
+ // QR (13–62 mm, com quiet zone de 4 módulos)
+ const q=qrcode(0,'Q');q.addData(qrURL(m.nint));q.make();const n=q.getModuleCount(),qs=49*mm,cell=qs/(n+8),qx=3*mm,qy=13*mm;
+ c.fillStyle='#000';
+ for(let r=0;r<n;r++)for(let k=0;k<n;k++)if(q.isDark(r,k))c.fillRect(Math.round(qx+(k+4)*cell),Math.round(qy+(r+4)*cell),Math.ceil(cell),Math.ceil(cell));
+ // coluna direita (a partir de 55 mm)
+ const rx=55*mm,rw=W-rx-4*mm;
+ if(SET.logo){try{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=SET.logo.data});
+  const k=Math.min(rw/im.width,10*mm/im.height),lw=im.width*k,lh=im.height*k;c.drawImage(im,rx,15*mm+(10*mm-lh)/2,lw,lh)}catch(e){}}
+ let y=27*mm;c.textAlign='left';c.textBaseline='top';c.fillStyle='#000';
+ c.font=`bold ${4.2*mm}px ${F}`;const nl=wrapLines(c,m.equip||'',rw,3);nl.forEach((l,k)=>c.fillText(l,rx,y+k*5*mm));
+ y=43.5*mm;c.fillStyle=NAVY;let fs=5.6*mm;c.font=`bold ${fs}px ${F}`;while(c.measureText(m.nint||'').width>rw&&fs>2.5*mm){fs-=.2*mm;c.font=`bold ${fs}px ${F}`}c.fillText(m.nint||'',rx,y);
+ y=51*mm;c.fillStyle='#333';c.font=`${3.3*mm}px ${F}`;if(m.local)wrapLines(c,m.local,rw,3).forEach((l,k)=>c.fillText(l,rx,y+k*4*mm));
+ // rodapé (63–70 mm)
+ c.fillStyle='#e6ebf1';c.fillRect(0,63.5*mm,W,H-63.5*mm);
+ c.fillStyle='#333';c.textAlign='center';c.textBaseline='middle';c.font=`${3*mm}px ${F}`;c.fillText('Ler com a câmara do telemóvel para iniciar a inspeção',W/2,66.7*mm);
+ c.strokeStyle=NAVY;c.lineWidth=4;c.strokeRect(2,2,W-4,H-4);
+ return cv;
+}
+async function showQR(){
  const m=mdraft;if(!m.nint){toast('Preenche e guarda o nº interno primeiro');return}
- let svg='';try{const q=qrcode(0,'M');q.addData(qrURL(m.nint));q.make();svg=q.createSvgTag({cellSize:6,margin:2,scalable:true})}catch(e){toast('Não consegui gerar o QR');return}
+ let cv;try{cv=await labelCanvas(m)}catch(e){console.error(e);toast('Não consegui gerar a etiqueta');return}
+ lastLabel={cv,name:'Etiqueta_QR_'+m.nint.replace(/[^\w\-]+/g,'_')+'.png'};
  closeModal();const o=document.createElement('div');o.className='modal';o.id='qrmodal';
- o.innerHTML=`<div class="qrcard">${svg}<h3>${esc(m.equip||'')}</h3><div>${esc(m.nint)}${m.local?' · '+esc(m.local):''}</div></div><div class="mbar"><button class="btn sm" data-act="qrprint">Imprimir</button><button class="btn sec sm" data-act="mclose">Fechar</button></div>`;document.body.appendChild(o);
+ o.innerHTML=`<img class="qrimg" src="${cv.toDataURL('image/png')}" alt="Etiqueta"><div class="mbar"><button class="btn sm" data-act="qrdl">Descarregar PNG</button><button class="btn sec sm" data-act="qrprint">Imprimir</button><button class="btn sec sm" data-act="mclose">Fechar</button></div><small class="mut" style="text-align:center">10 × 7 cm · 300 ppp. Imprime em papel autocolante ou plastifica antes de colar.</small>`;document.body.appendChild(o);
 }
 async function openByNint(n){
  const m=(await getAll('machines')).find(x=>x.nint&&x.nint.toLowerCase()===String(n).toLowerCase());
@@ -420,6 +455,7 @@ document.addEventListener('click',e=>{
  const a=t.dataset.act;
  if(a==='mclose')closeModal();else if(a==='mark')markPhoto(t.dataset.pid);
  else if(a==='qrprint')window.print();
+ else if(a==='qrdl'&&lastLabel)lastLabel.cv.toBlob(b=>download(b,lastLabel.name),'image/png');
 });
 $('#nav').addEventListener('click',e=>{const b=e.target.closest('[data-t]');if(b){homeTab=b.dataset.t;renderHome()}});
 app.addEventListener('input',e=>{const t=e.target;
